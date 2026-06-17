@@ -10,7 +10,7 @@ the MIT license, © 2026 Bradley Bonanno.
 
 ## This distribution — claude-watch
 
-**Taoufik** — [taoufik123-collab](https://github.com/taoufik123-collab)
+**inematds** — [inematds](https://github.com/inematds)
 
 Scene-change frame extraction, the 0-10s hook microscope, the structured `report.md`, and
 optional Obsidian auto-save, on top of Bradley's pipeline.
