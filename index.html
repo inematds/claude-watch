@@ -93,6 +93,7 @@
   <div class="links">
     <a class="sec" href="#oque">O que é</a>
     <a class="sec" href="#fluxo">Como funciona</a>
+    <a class="sec" href="#obsidian">Obsidian</a>
     <a class="sec" href="#pre">Pré-requisitos</a>
     <a class="sec" href="#guia">Guia de uso</a>
     <a class="sec" href="#exemplos">Exemplos</a>
@@ -154,6 +155,17 @@
     <span>resposta + report.md</span><span class="arr">→</span>
     <span>Obsidian (opcional)</span>
   </div>
+</div></section>
+
+<section id="obsidian"><div class="wrap">
+  <span class="chip">Objetivo final</span>
+  <h2>O vídeo vira uma nota conectada no seu Obsidian</h2>
+  <p class="sub">O <code>/watch</code> não para na resposta. O alvo é transformar o vídeo num nó de conhecimento estruturado no seu Second Brain — enquadrado pelo <em>porquê</em> você assistiu (o <code>--intent</code>). Ele grava em duas camadas.</p>
+  <div class="grid g2">
+    <div class="card"><h3>📄 report.md (sempre)</h3><p>Artefato de esquema fixo em <code>raw/watched/&lt;slug&gt;/</code> + as hero frames: TL;DR pela lente do intent, momentos-chave, microscópio do hook 0-10s, perfil editorial, citações, <strong>entidades</strong> como <code>[[wikilinks]]</code>, conceitos e o transcript completo.</p></div>
+    <div class="card"><h3>🧠 Ingestão no wiki (com consentimento)</h3><p>Se o vault tem um <code>CLAUDE.md</code> com uma Ingest op, ela roda e grava/atualiza <code>wiki/entities/</code> (pessoas, empresas, ferramentas), <code>wiki/concepts/</code> (frameworks), <code>wiki/sources/</code> (a página do vídeo) e uma linha no <code>log.md</code>.</p></div>
+  </div>
+  <p class="sub" style="margin-top:20px">O objetivo unificador: o vídeo vira um nó de primeira classe no seu grafo de conhecimento — pessoas, ferramentas e conceitos ligados via <code>[[wikilink]]</code> às notas que você já tem. Detalhe honesto: o <code>report.md</code> o script gera sozinho; o wiki só é populado se o seu vault definir a Ingest op — a skill delega esse passo ao contrato do seu Second Brain, não traz uma pronta.</p>
 </div></section>
 
 <section id="pre"><div class="wrap">

@@ -64,6 +64,22 @@ Claude is great at reading and synthesizing — but until now, video was the one
 6. **Claude answers grounded in what's actually on screen and in the audio.** Not "based on the description" or "according to the title." It saw the frames. It heard the transcript. It answers the way someone who watched the video would.
 7. **Cleanup.** The script prints a working directory at the end. If you're not asking follow-ups, Claude removes it.
 
+## The end goal: a watched video becomes a connected note
+
+`/watch` doesn't stop at answering your question. Its real objective is to turn a video into a **structured, connected note in your Obsidian "Second Brain"** — framed by *why* you watched it (the `--intent`). It writes in two layers:
+
+**1. The raw artifact — `report.md`** (Step 4.4), staged at `raw/watched/<slug>/` alongside the selected **hero frames**. Fixed schema: frontmatter (source, title, duration, watched_at, intent, hero_frames, transcript_source), **TL;DR** through the lens of your intent, **key moments**, the **0-10s hook microscope** (frame-by-frame + word-level transcript + the hook pattern), **editorial profile** (cuts/min, shot length, style fingerprint), **quotable moments**, **entities** (people / companies / tools as `[[wikilinks]]`), **concepts**, and the full **transcript**.
+
+**2. Wiki ingestion** (Step 4.5, only with your consent). If your vault has a `CLAUDE.md` with an Ingest op, that op runs against the report and writes/updates:
+- `wiki/entities/` — pages for the people, companies, and tools mentioned
+- `wiki/concepts/` — the frameworks and mental models that surfaced
+- `wiki/sources/` — the video's own page with TL;DR + citations
+- a one-line entry in `log.md`
+
+With no vault `CLAUDE.md`, it falls back to a generic ingest: the `log.md` line plus the staged report.
+
+**The unifying objective:** the video becomes a first-class node in your knowledge graph — its people, tools, and concepts wired via `[[wikilink]]` into the notes you already have, framed by your reason for watching. Note: the script *generates* `report.md` on its own, but the wiki is only populated if your vault defines the Ingest op — the skill delegates that step to your Second Brain's contract rather than shipping one.
+
 ## Frame budget — why it matters
 
 Token cost is dominated by frames. Every frame is an image; image tokens add up fast. The script's auto-fps logic exists so you don't blow your context budget on a sparse scan of a 30-minute video that would have been better answered by a focused 30-second window.
