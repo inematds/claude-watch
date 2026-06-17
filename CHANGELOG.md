@@ -2,6 +2,11 @@
 
 All notable changes to `/watch` are documented here.
 
+## [0.2.1] — 2026-06-17
+
+### Changed
+- Repointed all distribution references (repo URLs, plugin author/owner, homepage, `SKILL.md` author) from `taoufik123-collab` to `inematds/claude-watch`. Install commands are now `/plugin marketplace add inematds/claude-watch` + `/plugin install watch@claude-watch`. Original-author credit to Bradley Bonanno (`bradautomates/claude-video`, LICENSE, CHANGELOG) is unchanged.
+
 ## [0.2.0] — 2026-05-25
 
 Based on [bradautomates/claude-video](https://github.com/bradautomates/claude-video) v0.1.3 by Bradley Bonanno (MIT). Its pipeline (yt-dlp + ffmpeg + Whisper) is preserved; everything below is additive.
