@@ -118,6 +118,14 @@ def write_report(
         lines.append(f"- Cuts/min: {pacing['cuts_per_minute']}")
         lines.append(f"- Mean shot length: {pacing['mean_shot_length']}s")
         lines.append(f"- Median shot length: {pacing['median_shot_length']}s")
+        scored = [s for s in pacing.get("shots", []) if s.get("motion_score") is not None]
+        if scored:
+            peak = max(scored, key=lambda s: s["motion_score"])
+            mean_motion = round(sum(s["motion_score"] for s in scored) / len(scored), 2)
+            lines.append(
+                f"- Motion (0-1, relative): mean {mean_motion}, "
+                f"peak {peak['motion_score']} @ {_fmt_time(peak['start_seconds'])}"
+            )
         lines.append("- Talking-head ratio: n/a (opencv not installed)")
     else:
         lines.append("_No scene-change data — likely a static/screen-recorded source._")

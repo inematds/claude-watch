@@ -14,6 +14,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from pacing import parse_signalstats  # noqa: E402
+
 
 MAX_FPS = 2.0
 
@@ -289,6 +291,44 @@ def extract_scene_change(
         }
         for i, p in enumerate(frames)
     ]
+
+
+def extract_motion_diffs(
+    video_path: str,
+    start_seconds: float | None = None,
+    end_seconds: float | None = None,
+    sample_fps: float = 4.0,
+    sample_width: int = 320,
+) -> list[tuple[float, float]]:
+    """Per-frame motion proxy via ffmpeg `signalstats` (YDIF) — no opencv.
+
+    Downsamples to `sample_fps` at `sample_width` first so the pass is cheap.
+    YDIF is the mean luma delta vs the previous frame: high on cuts and fast
+    motion, ~0 on a static shot. Returns (pts_time, ydif) pairs over the range,
+    with timestamps offset back onto the real timeline when a range is set.
+    """
+    if shutil.which("ffmpeg") is None:
+        raise SystemExit("ffmpeg is not installed. Install with: brew install ffmpeg")
+
+    cmd: list[str] = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+    if start_seconds is not None:
+        cmd += ["-ss", f"{start_seconds:.3f}"]
+    if end_seconds is not None:
+        cmd += ["-to", f"{end_seconds:.3f}"]
+    vf = f"fps={sample_fps},scale={sample_width}:-2,signalstats,metadata=mode=print:file=-"
+    cmd += [
+        "-i", str(Path(video_path).resolve()),
+        "-an", "-vf", vf, "-f", "null", "-",
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise SystemExit(f"ffmpeg motion analysis failed: {result.stderr.strip()}")
+
+    # metadata=print writes to stdout on most builds, stderr on some — parse both.
+    diffs = parse_signalstats(result.stdout + "\n" + result.stderr)
+    offset = start_seconds or 0.0
+    return [(round(offset + t, 3), y) for t, y in diffs]
 
 
 def select_hero_frames(

@@ -17,6 +17,18 @@ import sys
 from pathlib import Path
 
 
+def _shot_intervals(scene_times: list[float], video_duration: float) -> list[tuple[float, float]]:
+    """Shot (start, end) windows. Mirrors the implicit-shot-0 rule so motion
+    scoring and pacing agree on shot boundaries and counts."""
+    times = sorted(scene_times)
+    if times[0] > 0.01:
+        times = [0.0] + times
+    return [
+        (times[i], times[i + 1] if i + 1 < len(times) else video_duration)
+        for i in range(len(times))
+    ]
+
+
 def compute_pacing(
     scene_times: list[float],
     video_duration: float,
@@ -52,13 +64,8 @@ def compute_pacing(
             "shots": [],
         }
 
-    times = sorted(scene_times)
-    if times[0] > 0.01:
-        times = [0.0] + times
-
     shots: list[dict] = []
-    for i, start in enumerate(times):
-        end = times[i + 1] if i + 1 < len(times) else video_duration
+    for i, (start, end) in enumerate(_shot_intervals(scene_times, video_duration)):
         duration = max(0.0, end - start)
         shot = {
             "start_seconds": round(start, 2),
@@ -79,13 +86,63 @@ def compute_pacing(
     }
 
 
-def motion_scores_from_frames(frame_paths: list[str]) -> list[float]:
-    """Cheap stub. Real implementation would run ffmpeg signalstats per shot.
+def parse_signalstats(text: str) -> list[tuple[float, float]]:
+    """Parse ffmpeg `signalstats,metadata=print` output into (pts_time, YDIF) pairs.
 
-    Returning zeros for now — the report works with motion_score=null. Worth
-    revisiting only if a downstream feature actually drives off motion scores.
+    YDIF is the mean absolute luma difference from the previous frame — a cheap,
+    opencv-free per-frame motion proxy (high on cuts and fast motion, ~0 on a
+    static shot). The reporter never sees this raw stream; it's aggregated per
+    shot by motion_scores_per_shot.
     """
-    return [0.0 for _ in frame_paths]
+    out: list[tuple[float, float]] = []
+    cur_t: float | None = None
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("frame:"):
+            cur_t = None
+            for tok in line.split():
+                if tok.startswith("pts_time:"):
+                    try:
+                        cur_t = float(tok.split(":", 1)[1])
+                    except ValueError:
+                        cur_t = None
+        elif line.startswith("lavfi.signalstats.YDIF=") and cur_t is not None:
+            try:
+                out.append((cur_t, float(line.split("=", 1)[1])))
+            except ValueError:
+                pass
+    return out
+
+
+def motion_scores_per_shot(
+    diffs: list[tuple[float, float]],
+    scene_times: list[float],
+    video_duration: float,
+) -> list[float]:
+    """Aggregate per-frame (pts_time, YDIF) diffs into one motion score per shot.
+
+    Scores are normalised relative to the busiest shot (max -> 1.0) so they line
+    up with select_hero_frames' "highest-motion shot" pick. Shot boundaries come
+    from _shot_intervals, so len() always equals compute_pacing's shot_count.
+    Returns all-zeros (never raises) when there is no motion or no diff data.
+    """
+    if not scene_times or video_duration <= 0:
+        return []
+    intervals = _shot_intervals(scene_times, video_duration)
+    sums = [0.0] * len(intervals)
+    counts = [0] * len(intervals)
+    for t, ydif in diffs:
+        for i, (start, end) in enumerate(intervals):
+            last = i == len(intervals) - 1
+            if start <= t < end or (last and t == end):
+                sums[i] += ydif
+                counts[i] += 1
+                break
+    avgs = [sums[i] / counts[i] if counts[i] else 0.0 for i in range(len(intervals))]
+    peak = max(avgs) if avgs else 0.0
+    if peak <= 0:
+        return [0.0] * len(intervals)
+    return [round(a / peak, 3) for a in avgs]
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from frames import extract_scene_change, extract  # noqa: E402
+from frames import extract_scene_change, extract, extract_motion_diffs  # noqa: E402
 
 
 def _make_test_video(out: Path, seconds: int = 6) -> Path:
@@ -68,6 +68,37 @@ class TestSceneChange(unittest.TestCase):
             max_frames=10, uniform_fallback_min=5,
         )
         self.assertGreaterEqual(len(frames), 5, "fallback should produce >=5 frames")
+
+
+class TestMotionDiffs(unittest.TestCase):
+
+    def setUp(self):
+        if shutil.which("ffmpeg") is None:
+            self.skipTest("ffmpeg not available")
+        self.tmp = Path(tempfile.mkdtemp(prefix="watch-mtest-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_returns_diffs_with_motion_at_cuts(self):
+        video = _make_test_video(self.tmp / "in.mp4", seconds=6)  # red|green|blue cuts
+        diffs = extract_motion_diffs(str(video))
+        self.assertTrue(diffs, "expected non-empty (pts_time, ydif) diffs")
+        for t, y in diffs:
+            self.assertIsInstance(t, float)
+            self.assertGreaterEqual(y, 0.0)
+        self.assertGreater(max(y for _, y in diffs), 0.0, "colour cuts should register motion")
+
+    def test_static_video_has_near_zero_motion(self):
+        static = self.tmp / "static.mp4"
+        subprocess.run([
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            "-f", "lavfi", "-i", "color=c=red:size=320x240:duration=4",
+            "-pix_fmt", "yuv420p", str(static),
+        ], check=True, capture_output=True)
+        diffs = extract_motion_diffs(str(static))
+        self.assertTrue(diffs, "expected diffs even for a static video")
+        self.assertTrue(all(y < 1.0 for _, y in diffs), "static video should be ~0 motion")
 
 
 if __name__ == "__main__":

@@ -2,6 +2,15 @@
 
 All notable changes to `/watch` are documented here.
 
+## [0.3.1] — 2026-06-20
+
+### Added
+- Per-shot **motion scoring via ffmpeg `signalstats`** (YDIF luma-delta) — opencv-free. `frames.extract_motion_diffs()` runs a cheap downsampled signalstats pass; `pacing.parse_signalstats()` + `pacing.motion_scores_per_shot()` aggregate it into one normalised score per shot (busiest shot = 1.0). Motion now feeds `select_hero_frames` (the high-motion hero pick is real, no longer a `0.0` stub) and a new **Motion line** in the report's editorial profile. Best-effort: a signalstats failure falls back to motion-less pacing instead of sinking the watch.
+- 7 new tests: signalstats parser, per-shot aggregation/normalisation, ffmpeg motion smoke (synthetic moving vs static video), and the report's motion line (present when scored, omitted when not).
+
+### Changed
+- `pacing.compute_pacing` refactored to share shot-boundary logic (`_shot_intervals`) with motion scoring, so motion-score length always matches `shot_count`. Removed the old `motion_scores_from_frames` zero-stub.
+
 ## [0.2.1] — 2026-06-17
 
 ### Changed

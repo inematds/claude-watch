@@ -17,11 +17,11 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from download import download, is_url  # noqa: E402
 from frames import (  # noqa: E402
-    MAX_FPS, auto_fps, auto_fps_focus, extract, extract_scene_change,
-    format_time, get_metadata, parse_time, select_hero_frames,
+    MAX_FPS, auto_fps, auto_fps_focus, extract, extract_motion_diffs,
+    extract_scene_change, format_time, get_metadata, parse_time, select_hero_frames,
 )
 from hook import analyse_hook  # noqa: E402
-from pacing import compute_pacing  # noqa: E402
+from pacing import compute_pacing, motion_scores_per_shot  # noqa: E402
 from report import write_report  # noqa: E402
 from transcribe import filter_range, format_transcript, parse_vtt  # noqa: E402
 from whisper import load_api_key, transcribe_video  # noqa: E402
@@ -150,10 +150,22 @@ def main() -> int:
         scene_times = [f["timestamp_seconds"] for f in frames]
     else:
         scene_times = []
+
+    # Motion per shot via ffmpeg signalstats (opencv-free). Best-effort: a
+    # failure here must not sink the whole watch — fall back to motion-less pacing.
+    motion_scores = None
+    if scene_times:
+        print("[watch] measuring per-shot motion (ffmpeg signalstats)…", file=sys.stderr)
+        try:
+            diffs = extract_motion_diffs(video_path, start_sec, end_sec)
+            motion_scores = motion_scores_per_shot(diffs, scene_times, effective_duration)
+        except SystemExit as exc:
+            print(f"[watch] motion analysis skipped: {exc}", file=sys.stderr)
+
     pacing = compute_pacing(
         scene_times=scene_times,
         video_duration=effective_duration,
-        motion_scores=None,
+        motion_scores=motion_scores,
     )
 
     # Hook microscope: dense pass over [0, 10s] when not in focused mode.

@@ -73,5 +73,53 @@ class TestReport(unittest.TestCase):
         self.assertIn("Hello world.", text)
 
 
+    def test_editorial_profile_includes_motion_when_scored(self):
+        out = write_report(
+            out_path=self.tmp / "report.md",
+            source="x", title="T", duration_seconds=30.0, intent="",
+            transcript_segments=[], transcript_source=None,
+            all_frames=[{"index": 0, "timestamp_seconds": 0.0, "path": "/tmp/a.jpg"}],
+            hero_frames=[],
+            pacing={
+                "shot_count": 3,
+                "cuts_per_minute": 6.0,
+                "mean_shot_length": 10.0,
+                "median_shot_length": 10.0,
+                "shots": [
+                    {"start_seconds": 0.0, "duration_seconds": 10.0, "motion_score": 0.2},
+                    {"start_seconds": 10.0, "duration_seconds": 10.0, "motion_score": 1.0},
+                    {"start_seconds": 20.0, "duration_seconds": 10.0, "motion_score": 0.5},
+                ],
+            },
+            hook={"frames": [], "words": [], "ran": False, "skipped_reason": "n/a"},
+        )
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("Motion", text)
+        self.assertIn("peak 1.0", text)
+        self.assertIn("@ 00:10", text)  # busiest shot starts at 10s
+
+    def test_editorial_profile_omits_motion_when_unscored(self):
+        out = write_report(
+            out_path=self.tmp / "report.md",
+            source="x", title="T", duration_seconds=30.0, intent="",
+            transcript_segments=[], transcript_source=None,
+            all_frames=[{"index": 0, "timestamp_seconds": 0.0, "path": "/tmp/a.jpg"}],
+            hero_frames=[],
+            pacing={
+                "shot_count": 2,
+                "cuts_per_minute": 4.0,
+                "mean_shot_length": 15.0,
+                "median_shot_length": 15.0,
+                "shots": [
+                    {"start_seconds": 0.0, "duration_seconds": 15.0, "motion_score": None},
+                    {"start_seconds": 15.0, "duration_seconds": 15.0, "motion_score": None},
+                ],
+            },
+            hook={"frames": [], "words": [], "ran": False, "skipped_reason": "n/a"},
+        )
+        text = out.read_text(encoding="utf-8")
+        self.assertNotIn("- Motion", text)
+
+
 if __name__ == "__main__":
     unittest.main()
