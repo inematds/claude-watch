@@ -108,6 +108,8 @@ Como rodar — o `--intent` molda o report pra esse eixo:
 
 O brief resultante (pacing + câmera + look + fingerprint) serve de direção pronta pra ferramentas de geração/motion de vídeo.
 
+**Exemplo real:** [`examples/avatar-reel-cinematic-style.md`](examples/avatar-reel-cinematic-style.md) — diagnóstico de estilo de um reel do Avatar, saída de uma execução real do `/watch`.
+
 ## Orçamento de frames — por que importa
 
 O custo de token é dominado pelos frames. Cada frame é uma imagem; tokens de imagem somam rápido. A lógica de auto-fps existe pra você não estourar o orçamento de contexto num scan esparso de um vídeo de 30 minutos que teria sido melhor respondido por uma janela focada de 30 segundos.
