@@ -12,9 +12,14 @@ nullable in the report; can be filled in later if/when opencv is added.
 from __future__ import annotations
 
 import json
+import math
+import re
 import statistics
 import sys
 from pathlib import Path
+
+
+_LM_RE = re.compile(r"\(LM\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)")
 
 
 def _shot_intervals(scene_times: list[float], video_duration: float) -> list[tuple[float, float]]:
@@ -143,6 +148,97 @@ def motion_scores_per_shot(
     if peak <= 0:
         return [0.0] * len(intervals)
     return [round(a / peak, 3) for a in avgs]
+
+
+def parse_transforms(text: str) -> list[list[tuple[int, int, int, int]]]:
+    """Parse a vidstabdetect `.trf` into per-frame local-motion vectors.
+
+    Each `Frame N (List K [(LM v.x v.y f.x f.y size contrast match),...])` line
+    becomes one entry: a list of `(v.x, v.y, f.x, f.y)` ints (the motion vector
+    and the field position it was measured at). Frames with no detected motion
+    yield `[]`. Header/comment lines are ignored. This is the opencv-free raw
+    signal that classify_shot_movement turns into pan/tilt/zoom/static labels.
+    """
+    frames: list[list[tuple[int, int, int, int]]] = []
+    for line in text.splitlines():
+        if not line.lstrip().startswith("Frame "):
+            continue
+        frames.append([
+            (int(a), int(b), int(c), int(d))
+            for a, b, c, d in _LM_RE.findall(line)
+        ])
+    return frames
+
+
+# Classification thresholds (normalised by frame size, so resolution-agnostic).
+_STATIC_MAG = 0.01     # median per-vector magnitude below ~1% of the diagonal
+_ZOOM_MIN = 0.012      # radial component must clear this to count as zoom
+_SHAKE_COHERENCE = 0.45  # net translation / per-vector magnitude below this = shaky
+
+
+def classify_shot_movement(
+    motions: list[tuple[int, int, int, int]],
+    frame_w: int,
+    frame_h: int,
+) -> dict:
+    """Label a shot's camera move from pooled vidstab local motions — no opencv.
+
+    `motions` is a flat list of (v.x, v.y, f.x, f.y) for every vector across the
+    shot's frames (parse_transforms output, concatenated). Robust medians resist
+    the noisy individual vectors. Returns a dict with the `label` plus the raw
+    signals it was derived from:
+
+      static · pan-left · pan-right · tilt-up · tilt-down · zoom-in · zoom-out ·
+      handheld · unknown
+
+    Heuristic, deterministic: net median translation gives pan/tilt; the median
+    radial component (outward from centre) gives zoom; high per-vector magnitude
+    with near-zero net translation (and no radial pattern) reads as handheld.
+    """
+    if not motions:
+        return {"label": "unknown", "vx": 0.0, "vy": 0.0, "zoom": 0.0,
+                "magnitude": 0.0, "coherence": 0.0}
+
+    diag = math.hypot(frame_w, frame_h) or 1.0
+    cx, cy = frame_w / 2.0, frame_h / 2.0
+
+    vx_med = statistics.median(m[0] for m in motions)
+    vy_med = statistics.median(m[1] for m in motions)
+    mag_med = statistics.median(math.hypot(m[0], m[1]) for m in motions)
+    trans_mag = math.hypot(vx_med, vy_med)
+    coherence = trans_mag / mag_med if mag_med > 0 else 0.0
+
+    radials = []
+    for vx, vy, fx, fy in motions:
+        rx, ry = fx - cx, fy - cy
+        r = math.hypot(rx, ry)
+        if r < 1e-6:
+            continue
+        radials.append((vx * rx + vy * ry) / r)
+    zoom_raw = statistics.median(radials) if radials else 0.0
+
+    pan = vx_med / frame_w
+    tilt = vy_med / frame_h
+    zoom = zoom_raw / (diag / 2.0)
+    mag_norm = mag_med / diag
+
+    result = {
+        "vx": round(vx_med, 2), "vy": round(vy_med, 2),
+        "zoom": round(zoom, 4), "magnitude": round(mag_norm, 4),
+        "coherence": round(coherence, 3),
+    }
+
+    if mag_norm < _STATIC_MAG:
+        result["label"] = "static"
+    elif abs(zoom) > _ZOOM_MIN and abs(zoom) >= max(abs(pan), abs(tilt)):
+        result["label"] = "zoom-in" if zoom > 0 else "zoom-out"
+    elif coherence < _SHAKE_COHERENCE:
+        result["label"] = "handheld"
+    elif abs(pan) >= abs(tilt):
+        result["label"] = "pan-right" if vx_med > 0 else "pan-left"
+    else:
+        result["label"] = "tilt-down" if vy_med > 0 else "tilt-up"
+    return result
 
 
 if __name__ == "__main__":
