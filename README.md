@@ -1,8 +1,8 @@
 # /watch
 
-**Give Claude the ability to watch any video.**
+**Dê ao Claude a capacidade de assistir qualquer vídeo.**
 
-> Paste a URL or a local file and Claude *watches* it — **scene-change frame extraction** (one frame per cut instead of every-N-seconds), a **0-10s hook microscope** (dense frames + word-level Whisper on the opening, where every video earns or loses your attention), and **optional Obsidian auto-save** so a watched video becomes a connected wiki entry without copy-paste.
+> Cole uma URL ou um arquivo local e o Claude *assiste* — **extração de frames por corte de cena** (um frame por corte, não a cada N segundos), um **microscópio do hook 0-10s** (frames densos + Whisper word-level na abertura, onde todo vídeo ganha ou perde sua atenção), **métricas editoriais de pacing com motion por shot** e **auto-save opcional no Obsidian**, pra um vídeo assistido virar uma entrada conectada no wiki sem copia-e-cola.
 
 Claude Code:
 ```
@@ -10,99 +10,100 @@ Claude Code:
 /plugin install watch@claude-watch
 ```
 
-claude.ai (web): [download `watch.skill`](https://github.com/inematds/claude-watch/releases/latest) and drop it into Settings → Capabilities → Skills.
+claude.ai (web): [baixe o `watch.skill`](https://github.com/inematds/claude-watch/releases/latest) e solte em Settings → Capabilities → Skills.
 
-Codex / generic skills:
+Codex / skills genéricas:
 ```bash
 git clone https://github.com/inematds/claude-watch.git ~/.codex/skills/watch
 ```
 
-Zero config to start — `yt-dlp` and `ffmpeg` install on first run via `brew` on macOS (Linux/Windows print exact commands). Captions cover most public videos for free. Whisper API key is only needed when a video has no captions. Set `$WATCH_VAULT_DIR` to point at your Obsidian vault for auto-save, or leave it unset and the skill skips the ingest step quietly.
+Zero config pra começar — `yt-dlp` e `ffmpeg` se instalam no primeiro run via `brew` no macOS (Linux/Windows imprimem os comandos exatos). Captions cobrem a maioria dos vídeos públicos de graça. Chave da API Whisper só é necessária quando o vídeo não tem legenda. Aponte `$WATCH_VAULT_DIR` pro seu vault Obsidian pra ligar o auto-save, ou deixe sem setar que a skill pula a etapa de ingest em silêncio.
 
-## What's inside
+## O que tem dentro
 
-- **Scene-change frame extraction** — `scripts/frames.py` grabs one frame per detected shot via ffmpeg's `select=gt(scene,...)`, not a uniform tick every N seconds. Token cost stays flat on long videos because the frame count is bounded by the number of cuts, not the duration.
-- **0-10s hook microscope** — `scripts/hook.py` runs a denser 2 fps pass on the opening 10 seconds plus a word-level Whisper transcript, so the report tells you what was on screen *as each word landed*. The first 10 seconds is where every video either earns your attention or loses it.
-- **Structured `report.md` with Claude-fill markers** — `scripts/report.py` emits a fixed-schema report (TL;DR, key moments, hook breakdown, editorial profile, quotable moments, entities, concepts, transcript) where narrative sections are explicit `<!-- pending Claude fill: ... -->` markers. Claude has a job-list to walk before ingest, not a blank doc.
-- **Optional Obsidian auto-save** — Step 4.4 stages the report into `$VAULT_DIR/raw/watched/<slug>/` and opens it via the `obsidian://` URL scheme. Step 4.5 offers ingest into the vault's wiki. Both steps skip cleanly when no vault is detected. Vault path is resolved from `$WATCH_VAULT_DIR` or auto-detected from `~/Second brain/`, `~/Documents/Obsidian/`, `~/Obsidian/`.
+- **Extração de frames por corte de cena** — `scripts/frames.py` pega um frame por shot detectado via `select=gt(scene,...)` do ffmpeg, não um tick uniforme a cada N segundos. O custo de token fica plano em vídeo longo porque o número de frames é limitado pela quantidade de cortes, não pela duração.
+- **Microscópio do hook 0-10s** — `scripts/hook.py` roda uma passada mais densa a 2 fps nos primeiros 10 segundos + um transcript Whisper word-level, pro relatório dizer o que estava na tela *conforme cada palavra caía*. Os 10 primeiros segundos são onde todo vídeo ganha ou perde sua atenção.
+- **Métricas editoriais de pacing + motion** — `scripts/pacing.py` calcula cortes/min, duração média/mediana de shot e, agora, **motion por shot via ffmpeg `signalstats`** (delta de luma YDIF, sem opencv). O shot mais agitado também guia a escolha das hero frames. Dá pra raciocinar sobre ritmo como um editor faz.
+- **`report.md` estruturado com marcadores de preenchimento** — `scripts/report.py` emite um relatório de esquema fixo (TL;DR, momentos-chave, breakdown do hook, perfil editorial, citações, entidades, conceitos, transcript) onde as seções narrativas são marcadores explícitos `<!-- pending Claude fill: ... -->`. O Claude tem uma lista de tarefas pra percorrer antes do ingest, não um doc em branco.
+- **Auto-save opcional no Obsidian** — o Step 4.4 monta o relatório em `$VAULT_DIR/raw/watched/<slug>/` e abre via URL scheme `obsidian://`. O Step 4.5 oferece o ingest no wiki do vault. Os dois passos pulam limpo quando nenhum vault é detectado. O caminho do vault vem de `$WATCH_VAULT_DIR` ou é auto-detectado em `~/Second brain/`, `~/Documents/Obsidian/`, `~/Obsidian/`.
 
-The core pipeline — yt-dlp download, ffmpeg frames, Groq/OpenAI Whisper backends, the `--start`/`--end` focused mode, the SessionStart hook, the multi-surface install — comes from the original `claude-video` project and works unchanged (see [Credits](#credits)).
+O pipeline-base — download yt-dlp, frames ffmpeg, backends Groq/OpenAI Whisper, o modo focado `--start`/`--end`, o hook de SessionStart e a instalação multi-superfície — vem do projeto original `claude-video` e funciona sem mudança (ver [Créditos](#créditos)).
 
 ---
 
-Claude can read a webpage, run a script, browse a repo. What it can't do, out of the box, is *watch a video*. You paste a YouTube link and it has to either guess from the title or pull a transcript that's missing 90% of what's on screen.
+O Claude lê uma página, roda um script, navega um repo. O que ele não faz, de fábrica, é *assistir um vídeo*. Você cola um link do YouTube e ele tem que adivinhar pelo título ou puxar um transcript que perde 90% do que está na tela.
 
-With Claude Video `/watch` you can paste a URL or a local path, ask a question, and Claude downloads the video, extracts frames at an auto-scaled rate, pulls a timestamped transcript (free captions when available, Whisper API as fallback), and `Read`s every frame as an image. By the time it answers, it has *seen* the video and *heard* the audio.
+Com o `/watch` você cola uma URL ou um caminho local, faz uma pergunta, e o Claude baixa o vídeo, extrai frames numa taxa auto-escalada, puxa um transcript com timestamp (captions grátis quando há, Whisper como fallback) e `Read` cada frame como imagem. Na hora de responder, ele *viu* o vídeo e *ouviu* o áudio.
 
 ```
-/watch https://youtu.be/dQw4w9WgXcQ what happens at the 30 second mark?
+/watch https://youtu.be/dQw4w9WgXcQ o que acontece aos 30 segundos?
 ```
 
-## Why this exists
+## Por que isso existe
 
-I built this because I'm constantly using video to keep up with content. If I see a YouTube video that's blowing up, I want to know how the creator structured the hook — what's on screen in the first 3 seconds, what they said, why it worked. That used to mean watching it myself with a notepad. Now I just paste the URL and ask.
+Construí isso porque vivo usando vídeo pra acompanhar conteúdo. Se vejo um vídeo do YouTube bombando, quero saber como o criador estruturou o gancho — o que está na tela nos 3 primeiros segundos, o que ele falou, por que funcionou. Isso significava assistir na mão com um bloco de notas. Agora eu só colo a URL e pergunto.
 
-The other half is summarization. Most YouTube videos don't deserve 20 minutes of my attention. I hand the URL to Claude, it pulls the transcript, and tells me what actually happened. If the visual matters, frames come along too. If it's a podcast or a talking head, transcript is enough.
+A outra metade é resumo. A maioria dos vídeos não merece 20 minutos da minha atenção. Eu passo a URL pro Claude, ele puxa o transcript e me diz o que de fato aconteceu. Se o visual importa, os frames vêm junto. Se é um podcast ou talking head, o transcript basta.
 
-Claude is great at reading and synthesizing — but until now, video was the one input I couldn't hand it. Pasting a YouTube link got you nothing useful. `/watch` closes that gap.
+O Claude é ótimo em ler e sintetizar — mas até agora vídeo era o único input que eu não conseguia passar pra ele. Colar um link do YouTube não dava nada útil. O `/watch` fecha essa lacuna.
 
-## What people actually use it for
+## Pra que as pessoas usam
 
-**Analyze someone else's content.** `/watch https://youtu.be/<viral-video> what hook did they open with?` Claude looks at the first frames, reads the opening transcript, breaks down the structure. Same for ad creative, competitor launches, podcast intros, anything where the *how* matters as much as the *what*.
+**Analisar conteúdo de outra pessoa.** `/watch https://youtu.be/<video-viral> que gancho eles abriram?` O Claude olha os primeiros frames, lê o transcript de abertura, quebra a estrutura. O mesmo pra ad creative, lançamento de concorrente, intro de podcast — qualquer coisa onde o *como* importa tanto quanto o *quê*.
 
-**Diagnose a bug from a video.** Someone sends you a screen recording of something broken. `/watch bug-repro.mov what's going wrong?` Claude watches the recording, finds the frame where the issue appears, describes what's on screen, often catches the cause without you ever opening the file.
+**Diagnosticar um bug por vídeo.** Te mandam um screen recording de algo quebrado. `/watch bug-repro.mov o que está dando errado?` O Claude assiste a gravação, acha o frame onde o problema aparece, descreve o que está na tela e muitas vezes pega a causa sem você nunca abrir o arquivo.
 
-**Summarize a video.** `/watch https://youtu.be/<long-thing> summarize this` does the obvious thing — pulls the structure, the key moments, what was actually said and shown. Faster than watching at 2x.
+**Resumir um vídeo.** `/watch https://youtu.be/<coisa-longa> resume isso` faz o óbvio — puxa a estrutura, os momentos-chave, o que foi realmente dito e mostrado. Mais rápido que assistir em 2x.
 
-## How it works
+## Como funciona
 
-1. **You paste a video and a question.** URL (anything yt-dlp supports — YouTube, Loom, TikTok, X, Instagram, plus a few hundred more) or a local path (`.mp4`, `.mov`, `.mkv`, `.webm`).
-2. **`yt-dlp` downloads it.** For URLs, into a temp working directory. For local files, no download — just probed in place.
-3. **`ffmpeg` extracts frames at an auto-scaled rate.** The frame budget is duration-aware: ≤30s gets ~30 frames, 30-60s gets ~40, 1-3min gets ~60, 3-10min gets ~80, longer gets 100 sparsely. Hard ceilings: 2 fps, 100 frames. JPEGs at 512px wide by default — bump with `--resolution 1024` if Claude needs to read on-screen text.
-4. **The transcript comes from one of two places.** First try: `yt-dlp` pulls native captions (manual or auto-generated) from the source. Free, instant, accurate-ish. Fallback: extract a mono 16 kHz audio clip and ship it to Whisper — Groq's `whisper-large-v3` (preferred — cheaper and faster) or OpenAI's `whisper-1`.
-5. **Frames + transcript are handed to Claude.** The script prints frame paths with `t=MM:SS` markers and the transcript with timestamps. Claude `Read`s each frame in parallel — JPEGs render directly as images in its context.
-6. **Claude answers grounded in what's actually on screen and in the audio.** Not "based on the description" or "according to the title." It saw the frames. It heard the transcript. It answers the way someone who watched the video would.
-7. **Cleanup.** The script prints a working directory at the end. If you're not asking follow-ups, Claude removes it.
+1. **Você cola um vídeo e uma pergunta.** URL (tudo que o yt-dlp suporta — YouTube, Loom, TikTok, X, Instagram, e mais umas centenas) ou um caminho local (`.mp4`, `.mov`, `.mkv`, `.webm`).
+2. **O `yt-dlp` baixa.** Pra URLs, num diretório de trabalho temporário. Pra arquivos locais, sem download — só é sondado no lugar.
+3. **O `ffmpeg` extrai frames numa taxa auto-escalada.** O orçamento de frames é consciente da duração: ≤30s pega ~30 frames, 30-60s pega ~40, 1-3min pega ~60, 3-10min pega ~80, mais longo pega 100 esparso. Tetos rígidos: 2 fps, 100 frames. JPEGs a 512px de largura por padrão — sobe com `--resolution 1024` se o Claude precisar ler texto na tela.
+4. **O transcript vem de um de dois lugares.** Primeira tentativa: `yt-dlp` puxa captions nativos (manual ou auto-gerados) da fonte. Grátis, instantâneo, razoavelmente preciso. Fallback: extrai um clipe de áudio mono 16 kHz e manda pro Whisper — `whisper-large-v3` da Groq (preferido — mais barato e rápido) ou `whisper-1` da OpenAI.
+5. **Frames + transcript são entregues ao Claude.** O script imprime os caminhos dos frames com marcadores `t=MM:SS` e o transcript com timestamps. O Claude `Read` cada frame em paralelo — JPEGs renderizam direto como imagem no contexto dele.
+6. **O Claude responde fundamentado no que está de fato na tela e no áudio.** Não "com base na descrição" ou "segundo o título". Ele viu os frames. Ouviu o transcript. Responde como quem assistiu o vídeo.
+7. **Limpeza.** O script imprime um diretório de trabalho no fim. Se você não vai fazer follow-up, o Claude remove.
 
-## The end goal: a watched video becomes a connected note
+## O objetivo final: o vídeo vira uma nota conectada
 
-`/watch` doesn't stop at answering your question. Its real objective is to turn a video into a **structured, connected note in your Obsidian "Second Brain"** — framed by *why* you watched it (the `--intent`). It writes in two layers:
+O `/watch` não para na resposta. O objetivo de verdade é transformar o vídeo numa **nota estruturada e conectada no seu "Second Brain" do Obsidian** — enquadrada pelo *porquê* você assistiu (o `--intent`). Ele grava em duas camadas:
 
-**1. The raw artifact — `report.md`** (Step 4.4), staged at `raw/watched/<slug>/` alongside the selected **hero frames**. Fixed schema: frontmatter (source, title, duration, watched_at, intent, hero_frames, transcript_source), **TL;DR** through the lens of your intent, **key moments**, the **0-10s hook microscope** (frame-by-frame + word-level transcript + the hook pattern), **editorial profile** (cuts/min, shot length, style fingerprint), **quotable moments**, **entities** (people / companies / tools as `[[wikilinks]]`), **concepts**, and the full **transcript**.
+**1. O artefato bruto — `report.md`** (Step 4.4), montado em `raw/watched/<slug>/` junto com as **hero frames** escolhidas. Esquema fixo: frontmatter (source, title, duration, watched_at, intent, hero_frames, transcript_source), **TL;DR** pela lente do seu intent, **momentos-chave**, o **microscópio do hook 0-10s** (frame-a-frame + transcript word-level + o padrão de gancho), **perfil editorial** (cortes/min, duração de shot, motion por shot, fingerprint de estilo), **citações**, **entidades** (pessoas / empresas / ferramentas como `[[wikilinks]]`), **conceitos** e o **transcript** completo.
 
-**2. Wiki ingestion** (Step 4.5, only with your consent). If your vault has a `CLAUDE.md` with an Ingest op, that op runs against the report and writes/updates:
-- `wiki/entities/` — pages for the people, companies, and tools mentioned
-- `wiki/concepts/` — the frameworks and mental models that surfaced
-- `wiki/sources/` — the video's own page with TL;DR + citations
-- a one-line entry in `log.md`
+**2. Ingestão no wiki** (Step 4.5, só com o seu consentimento). Se o vault tem um `CLAUDE.md` com uma Ingest op, ela roda contra o relatório e grava/atualiza:
+- `wiki/entities/` — páginas das pessoas, empresas e ferramentas mencionadas
+- `wiki/concepts/` — os frameworks e modelos mentais que apareceram
+- `wiki/sources/` — a página do próprio vídeo com TL;DR + citações
+- uma linha no `log.md`
 
-With no vault `CLAUDE.md`, it falls back to a generic ingest: the `log.md` line plus the staged report.
+Sem um `CLAUDE.md` no vault, ele cai num ingest genérico: a linha no `log.md` mais o relatório montado.
 
-**The unifying objective:** the video becomes a first-class node in your knowledge graph — its people, tools, and concepts wired via `[[wikilink]]` into the notes you already have, framed by your reason for watching. Note: the script *generates* `report.md` on its own, but the wiki is only populated if your vault defines the Ingest op — the skill delegates that step to your Second Brain's contract rather than shipping one.
+**O objetivo unificador:** o vídeo vira um nó de primeira classe no seu grafo de conhecimento — as pessoas, ferramentas e conceitos dele ligados via `[[wikilink]]` às notas que você já tem, enquadrados pelo seu motivo de assistir. Detalhe: o script *gera* o `report.md` sozinho, mas o wiki só é populado se o seu vault definir a Ingest op — a skill delega esse passo ao contrato do seu Second Brain, em vez de trazer um pronto.
 
-## Frame budget — why it matters
+## Orçamento de frames — por que importa
 
-Token cost is dominated by frames. Every frame is an image; image tokens add up fast. The script's auto-fps logic exists so you don't blow your context budget on a sparse scan of a 30-minute video that would have been better answered by a focused 30-second window.
+O custo de token é dominado pelos frames. Cada frame é uma imagem; tokens de imagem somam rápido. A lógica de auto-fps existe pra você não estourar o orçamento de contexto num scan esparso de um vídeo de 30 minutos que teria sido melhor respondido por uma janela focada de 30 segundos.
 
-| Duration | Default frame budget | What you get |
-|----------|---------------------|--------------|
-| ≤30 s | ~30 frames | Dense — basically every key moment |
-| 30 s - 1 min | ~40 frames | Still dense |
-| 1 - 3 min | ~60 frames | Comfortable |
-| 3 - 10 min | ~80 frames | Sparse but workable |
-| > 10 min | 100 frames | "Sparse scan" warning — re-run focused |
+| Duração | Orçamento de frames padrão | O que você ganha |
+|---------|----------------------------|------------------|
+| ≤30 s | ~30 frames | Denso — basicamente todo momento-chave |
+| 30 s - 1 min | ~40 frames | Ainda denso |
+| 1 - 3 min | ~60 frames | Confortável |
+| 3 - 10 min | ~80 frames | Esparso mas utilizável |
+| > 10 min | 100 frames | Aviso de "scan esparso" — re-rode focado |
 
-When the user names a moment ("around 2:30", "the last 30 seconds", "from 0:45 to 1:00"), pass `--start` / `--end`. Focused mode gets denser per-second budgets, capped at 2 fps. Far more useful than a sparse pass over the whole thing.
+Quando o usuário nomeia um momento ("por volta de 2:30", "os últimos 30 segundos", "de 0:45 a 1:00"), passe `--start` / `--end`. O modo focado usa orçamentos por segundo mais densos, limitados a 2 fps. Bem mais útil que uma passada esparsa pelo vídeo inteiro.
 
-## Install
+## Instalar
 
-| Surface | Install |
-|---------|---------|
-| **Claude Code** | `/plugin marketplace add inematds/claude-watch` then `/plugin install watch@claude-watch` |
-| **claude.ai** (web) | [Download `watch.skill`](https://github.com/inematds/claude-watch/releases/latest) → Settings → Capabilities → Skills → `+` |
+| Superfície | Instalação |
+|------------|------------|
+| **Claude Code** | `/plugin marketplace add inematds/claude-watch` e depois `/plugin install watch@claude-watch` |
+| **claude.ai** (web) | [Baixe o `watch.skill`](https://github.com/inematds/claude-watch/releases/latest) → Settings → Capabilities → Skills → `+` |
 | **Codex** | `git clone https://github.com/inematds/claude-watch.git ~/.codex/skills/watch` |
 | **Manual / dev** | `git clone https://github.com/inematds/claude-watch.git ~/.claude/skills/watch` |
-| **Configuration** | Optional: `export WATCH_VAULT_DIR=/path/to/your/obsidian/vault` to enable auto-save. Auto-detects `~/Second brain/`, `~/Documents/Obsidian/`, `~/Obsidian/`. |
+| **Configuração** | Opcional: `export WATCH_VAULT_DIR=/caminho/do/seu/vault/obsidian` pra ligar o auto-save. Auto-detecta `~/Second brain/`, `~/Documents/Obsidian/`, `~/Obsidian/`. |
 
 ### Claude Code
 
@@ -111,15 +112,15 @@ When the user names a moment ("around 2:30", "the last 30 seconds", "from 0:45 t
 /plugin install watch@claude-watch
 ```
 
-Update later with `/plugin update watch@claude-watch`.
+Atualize depois com `/plugin update watch@claude-watch`.
 
 ### claude.ai (web)
 
-1. [Download `watch.skill`](https://github.com/inematds/claude-watch/releases/latest) from the latest release.
-2. Go to Settings → Capabilities → Skills.
-3. Click `+` and drop the file in.
+1. [Baixe o `watch.skill`](https://github.com/inematds/claude-watch/releases/latest) do último release.
+2. Vá em Settings → Capabilities → Skills.
+3. Clique `+` e solte o arquivo.
 
-Enable "Code execution and file creation" under Capabilities first — the skill shells out to `ffmpeg` and `yt-dlp`, so it won't run without it.
+Ative "Code execution and file creation" em Capabilities antes — a skill chama `ffmpeg` e `yt-dlp`, então não roda sem isso.
 
 ### Codex
 
@@ -127,108 +128,114 @@ Enable "Code execution and file creation" under Capabilities first — the skill
 git clone https://github.com/inematds/claude-watch.git ~/.codex/skills/watch
 ```
 
-### Manual (developer)
+### Manual (desenvolvedor)
 
 ```bash
 git clone https://github.com/inematds/claude-watch.git ~/.claude/skills/watch
 ```
 
-## First run
+## Primeiro run
 
-On the first `/watch` call, the skill runs `scripts/setup.py --check`. If `ffmpeg` / `yt-dlp` aren't on your PATH, or no Whisper API key is set, it walks you through fixing it:
+Na primeira chamada `/watch`, a skill roda `scripts/setup.py --check`. Se `ffmpeg` / `yt-dlp` não estiverem no PATH, ou nenhuma chave Whisper estiver setada, ela te guia pra resolver:
 
-- **macOS** — auto-runs `brew install ffmpeg yt-dlp`.
-- **Linux** — prints the exact `apt` / `dnf` / `pipx` commands.
-- **Windows** — prints the `winget` / `pip` commands.
-- **API key** — scaffolds `~/.config/watch/.env` (mode `0600`) with commented placeholders for `GROQ_API_KEY` (preferred) and `OPENAI_API_KEY`.
+- **macOS** — auto-roda `brew install ffmpeg yt-dlp`.
+- **Linux** — imprime os comandos exatos `apt` / `dnf` / `pipx`.
+- **Windows** — imprime os comandos `winget` / `pip`.
+- **Chave de API** — cria `~/.config/watch/.env` (modo `0600`) com placeholders comentados pra `GROQ_API_KEY` (preferido) e `OPENAI_API_KEY`.
 
-After setup, preflight is silent and `/watch` just works. The check is a sub-100ms lookup, so it doesn't slow you down on subsequent runs.
+Depois do setup, o preflight é silencioso e o `/watch` simplesmente funciona. O check é um lookup de sub-100ms, então não te atrasa nos runs seguintes.
 
-## Bring your own keys
+## Use suas próprias chaves
 
-Captions cover the majority of public videos for free. The Whisper fallback only kicks in when a video genuinely has no caption track — typically local files, TikToks, some Vimeos, and the occasional caption-less YouTube upload.
+Captions cobrem a maioria dos vídeos públicos de graça. O fallback Whisper só entra quando o vídeo genuinamente não tem trilha de legenda — tipicamente arquivos locais, TikToks, alguns Vimeos e o eventual upload de YouTube sem legenda.
 
-| Capability | What you need | Cost |
-|------------|---------------|------|
-| Download + native captions | `yt-dlp` + `ffmpeg` | Free |
-| Whisper fallback (preferred) | [Groq API key](https://console.groq.com/keys) — `whisper-large-v3` | Cheap, fast |
-| Whisper fallback (alt) | [OpenAI API key](https://platform.openai.com/api-keys) — `whisper-1` | Standard pricing |
-| Disable Whisper entirely | `--no-whisper` | Free, frames-only when no captions |
+| Capacidade | O que você precisa | Custo |
+|------------|--------------------|-------|
+| Download + captions nativos | `yt-dlp` + `ffmpeg` | Grátis |
+| Fallback Whisper (preferido) | [Chave Groq](https://console.groq.com/keys) — `whisper-large-v3` | Barato, rápido |
+| Fallback Whisper (alt) | [Chave OpenAI](https://platform.openai.com/api-keys) — `whisper-1` | Preço padrão |
+| Desligar o Whisper de vez | `--no-whisper` | Grátis, só frames quando não há captions |
 
-## Usage
+## Uso
 
 ```
-/watch https://youtu.be/dQw4w9WgXcQ what happens at the 30 second mark?
-/watch https://www.tiktok.com/@user/video/123 summarize this
-/watch ~/Movies/screen-recording.mp4 when does the UI break?
-/watch https://vimeo.com/123 what tools does she mention?
+/watch https://youtu.be/dQw4w9WgXcQ o que acontece aos 30 segundos?
+/watch https://www.tiktok.com/@user/video/123 resume isso
+/watch ~/Movies/screen-recording.mp4 quando a UI quebra?
+/watch https://vimeo.com/123 que ferramentas ela menciona?
 ```
 
-Focused on a specific section — denser frame budget, lower token cost:
+Focado numa seção específica — orçamento de frames mais denso, menos token:
 ```
 /watch https://youtu.be/abc --start 2:15 --end 2:45
 /watch video.mp4 --start 50 --end 60
-/watch "$URL" --start 1:12:00            # from 1h12m to end
+/watch "$URL" --start 1:12:00            # de 1h12m até o fim
 ```
 
-Other knobs (passed to `scripts/watch.py`):
+Outros botões (passados pro `scripts/watch.py`):
 
-- `--max-frames N` — lower the frame cap for a tighter token budget.
-- `--resolution W` — bump frame width to 1024 px when Claude needs to read on-screen text (slides, terminals, code).
-- `--fps F` — override the auto-fps calculation (still capped at 2 fps).
-- `--whisper groq|openai` — force a specific Whisper backend.
-- `--no-whisper` — disable transcription entirely; frames only.
-- `--out-dir DIR` — keep working files somewhere specific (default: auto-generated tmp dir).
+- `--max-frames N` — baixa o teto de frames pra um orçamento de token mais apertado.
+- `--resolution W` — sobe a largura do frame pra 1024 px quando o Claude precisa ler texto na tela (slides, terminais, código).
+- `--fps F` — sobrescreve o cálculo de auto-fps (ainda limitado a 2 fps).
+- `--whisper groq|openai` — força um backend Whisper específico.
+- `--no-whisper` — desliga a transcrição de vez; só frames.
+- `--out-dir DIR` — guarda os arquivos de trabalho num lugar específico (padrão: tmp auto-gerado).
 
-## Limits
+## Limites
 
-- **Best accuracy: under 10 minutes.** Past that the script prints a "sparse scan" warning — re-run focused on the part you actually care about with `--start`/`--end`.
-- **Hard caps: 2 fps, 100 frames.** Frame count drives token cost; the script enforces this even when the auto-fps math would imply higher.
-- **Whisper upload limit: 25 MB.** At mono 16 kHz that's about 50 minutes of audio. Longer videos need either captions or `--start`/`--end` to a smaller window.
-- **No private platforms.** This skill doesn't log into anything. Public URLs and local files only. If yt-dlp can't reach it without auth, neither can `/watch`.
+- **Melhor acurácia: abaixo de 10 minutos.** Acima disso o script imprime um aviso de "scan esparso" — re-rode focado na parte que importa com `--start`/`--end`.
+- **Tetos rígidos: 2 fps, 100 frames.** A contagem de frames dirige o custo de token; o script força isso mesmo quando a conta de auto-fps implicaria mais.
+- **Limite de upload do Whisper: 25 MB.** A mono 16 kHz isso dá uns 50 minutos de áudio. Vídeos maiores precisam de captions ou de `--start`/`--end` pra uma janela menor.
+- **Sem plataformas privadas.** A skill não loga em nada. Só URLs públicas e arquivos locais. Se o yt-dlp não alcança sem auth, o `/watch` também não.
 
-## Structure
+## Estrutura
 
 ```
 .
-├── SKILL.md                 # skill contract — loaded by all three surfaces
+├── SKILL.md                 # contrato da skill — carregado pelas três superfícies
 ├── scripts/
-│   ├── watch.py             # entry point — orchestrates download → frames → transcript
-│   ├── download.py          # yt-dlp wrapper
-│   ├── frames.py            # ffmpeg frame extraction + auto-fps logic
-│   ├── transcribe.py        # VTT parsing + dedupe + Whisper orchestration
-│   ├── whisper.py           # Groq / OpenAI clients (pure stdlib)
-│   ├── setup.py             # preflight + installer
-│   └── build-skill.sh       # build dist/watch.skill for claude.ai upload
-├── hooks/                   # SessionStart status hook (Claude Code only)
+│   ├── watch.py             # entry point — orquestra download → frames → transcript
+│   ├── download.py          # wrapper do yt-dlp
+│   ├── frames.py            # extração de frames ffmpeg + auto-fps + motion (signalstats)
+│   ├── pacing.py            # métricas editoriais (cortes/min, shot length, motion por shot)
+│   ├── hook.py              # microscópio do hook 0-10s
+│   ├── report.py            # emissor do report.md estruturado
+│   ├── transcribe.py        # parse de VTT + dedupe + orquestração Whisper
+│   ├── whisper.py           # clients Groq / OpenAI (pure stdlib)
+│   ├── setup.py             # preflight + instalador
+│   └── build-skill.sh       # monta dist/watch.skill pro upload no claude.ai
+├── hooks/                   # hook de status no SessionStart (só Claude Code)
 ├── .claude-plugin/          # plugin.json + marketplace.json (Claude Code)
-├── .codex-plugin/           # codex packaging
-└── .github/workflows/       # release.yml — auto-builds watch.skill on tag push
+├── .codex-plugin/           # empacotamento codex
+└── .github/workflows/       # release.yml — auto-monta watch.skill no push de tag
 ```
 
-## Develop
+## Desenvolver
 
 ```bash
-# Build the claude.ai upload bundle:
+# Monta o bundle de upload do claude.ai:
 bash scripts/build-skill.sh      # → dist/watch.skill
+
+# Roda os testes (stdlib unittest, sem dependência de pytest):
+python3 -m pytest scripts/tests/ -q   # ou: python3 -m unittest discover scripts/tests
 ```
 
-Releasing: tag `vX.Y.Z`, push the tag. The workflow builds `dist/watch.skill` and attaches it to the GitHub release.
+Releasing: tag `vX.Y.Z`, push da tag. O workflow monta `dist/watch.skill` e anexa ao release do GitHub.
 
-See [CHANGELOG.md](CHANGELOG.md) for version history.
+Veja o [CHANGELOG.md](CHANGELOG.md) pro histórico de versões.
 
-## Credits
+## Créditos
 
-`/watch` is built on **[claude-video](https://github.com/bradautomates/claude-video)** by **[Bradley Bonanno](https://github.com/bradautomates)**. The original `/watch` skill — the yt-dlp download, the ffmpeg pipeline, the Groq/OpenAI Whisper backends, the install flow, and the SessionStart hook — is his work, released under the MIT license. This repo extends it with scene-change frame extraction, the 0-10s hook microscope, the structured `report.md`, and Obsidian auto-save.
+O `/watch` é construído sobre o **[claude-video](https://github.com/bradautomates/claude-video)** do **[Bradley Bonanno](https://github.com/bradautomates)**. A skill `/watch` original — o download yt-dlp, o pipeline ffmpeg, os backends Groq/OpenAI Whisper, o fluxo de instalação e o hook de SessionStart — é trabalho dele, lançado sob a licença MIT. Este repo estende com extração de frames por corte de cena, o microscópio do hook 0-10s, o motion por shot via signalstats, o `report.md` estruturado e o auto-save no Obsidian.
 
-Original author and copyright holder: **Bradley Bonanno** (see [LICENSE](LICENSE)). Contributors are listed in [AUTHORS.md](AUTHORS.md).
+Autor original e detentor do copyright: **Bradley Bonanno** (ver [LICENSE](LICENSE)). Contribuidores estão listados em [AUTHORS.md](AUTHORS.md).
 
 ## Open source
 
-MIT license.
+Licença MIT.
 
-Built on `yt-dlp`, `ffmpeg`, and Claude's multimodal `Read` tool. Whisper transcription via [Groq](https://groq.com) or [OpenAI](https://openai.com).
+Construído sobre `yt-dlp`, `ffmpeg` e a `Read` multimodal do Claude. Transcrição Whisper via [Groq](https://groq.com) ou [OpenAI](https://openai.com).
 
 ---
 
-[github.com/inematds/claude-watch](https://github.com/inematds/claude-watch) · [Credits](#credits) · [LICENSE](LICENSE)
+[github.com/inematds/claude-watch](https://github.com/inematds/claude-watch) · [Créditos](#créditos) · [LICENSE](LICENSE)
