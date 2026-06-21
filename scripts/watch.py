@@ -17,11 +17,12 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from download import download, is_url  # noqa: E402
 from frames import (  # noqa: E402
-    MAX_FPS, auto_fps, auto_fps_focus, extract, extract_motion_diffs,
-    extract_scene_change, format_time, get_metadata, parse_time, select_hero_frames,
+    MAX_FPS, auto_fps, auto_fps_focus, extract, extract_camera_transforms,
+    extract_motion_diffs, extract_scene_change, format_time, get_metadata,
+    parse_time, select_hero_frames,
 )
 from hook import analyse_hook  # noqa: E402
-from pacing import compute_pacing, motion_scores_per_shot  # noqa: E402
+from pacing import compute_pacing, motion_scores_per_shot, camera_moves_per_shot  # noqa: E402
 from report import write_report  # noqa: E402
 from transcribe import filter_range, format_transcript, parse_vtt  # noqa: E402
 from whisper import load_api_key, transcribe_video  # noqa: E402
@@ -162,10 +163,24 @@ def main() -> int:
         except SystemExit as exc:
             print(f"[watch] motion analysis skipped: {exc}", file=sys.stderr)
 
+    # Camera-movement classification per shot via ffmpeg vidstabdetect (opencv-free).
+    # Best-effort: vid.stab may be absent in some ffmpeg builds — degrade quietly.
+    camera_labels = None
+    if scene_times:
+        print("[watch] classifying camera movement (ffmpeg vidstabdetect)…", file=sys.stderr)
+        try:
+            cam_frames, cam_w, cam_h = extract_camera_transforms(video_path, start_sec, end_sec)
+            camera_labels = camera_moves_per_shot(
+                cam_frames, scene_times, effective_duration, cam_w, cam_h
+            )
+        except SystemExit as exc:
+            print(f"[watch] camera analysis skipped: {exc}", file=sys.stderr)
+
     pacing = compute_pacing(
         scene_times=scene_times,
         video_duration=effective_duration,
         motion_scores=motion_scores,
+        camera_labels=camera_labels,
     )
 
     # Hook microscope: dense pass over [0, 10s] when not in focused mode.

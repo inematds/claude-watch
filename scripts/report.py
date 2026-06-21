@@ -17,6 +17,7 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 
 
@@ -126,6 +127,13 @@ def write_report(
                 f"- Motion (0-1, relative): mean {mean_motion}, "
                 f"peak {peak['motion_score']} @ {_fmt_time(peak['start_seconds'])}"
             )
+        cam = [s["camera"] for s in pacing.get("shots", []) if s.get("camera")]
+        if cam:
+            counts = Counter(cam)
+            meaningful = Counter(c for c in cam if c != "unknown")
+            dominant = meaningful.most_common(1)[0][0] if meaningful else "indeterminate"
+            tally = ", ".join(f"{n}× {lbl}" for lbl, n in counts.most_common())
+            lines.append(f"- Camera movement: predominantly {dominant} ({tally})")
         lines.append("- Talking-head ratio: n/a (opencv not installed)")
     else:
         lines.append("_No scene-change data — likely a static/screen-recorded source._")

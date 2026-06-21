@@ -2,6 +2,16 @@
 
 All notable changes to `/watch` are documented here.
 
+## [0.4.1] — 2026-06-21
+
+### Added
+- Per-shot **camera-movement classification** via ffmpeg `vidstabdetect` (vid.stab) — opencv-free. `frames.extract_camera_transforms()` runs the detection pass into a temp `.trf`; `pacing.parse_transforms()` reads its local-motion vectors, `pacing.classify_shot_movement()` labels a shot (`static` / `pan-left` / `pan-right` / `tilt-up` / `tilt-down` / `zoom-in` / `zoom-out` / `handheld` / `unknown`) from robust medians — net translation → pan/tilt, radial component → zoom, high magnitude with cancelling directions → handheld — and `pacing.camera_moves_per_shot()` pools vectors per shot. Surfaced as a **Camera movement** line in the report's editorial profile (dominant label ignores `unknown`). Best-effort: an absent vid.stab build or a detect failure degrades to motion-only pacing instead of sinking the watch.
+- `compute_pacing(..., camera_labels=...)` attaches a `camera` label to each shot.
+- 19 new tests (parser on a real `.trf` sample, per-label classification on synthetic vectors, per-shot pooling, an end-to-end synthetic-pan smoke, and the report line); suite now 39 green.
+
+### Changed
+- Pan-vs-tilt dominance is compared in raw pixels (not aspect-normalised), so a short frame's vertical jitter can't outweigh a real horizontal pan.
+
 ## [0.3.1] — 2026-06-20
 
 ### Added

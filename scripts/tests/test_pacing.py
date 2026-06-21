@@ -53,6 +53,19 @@ class TestPacing(unittest.TestCase):
         scores = [s["motion_score"] for s in result["shots"]]
         self.assertEqual(scores, [0.1, 0.5, 0.9])
 
+    def test_camera_labels_attached(self):
+        result = compute_pacing(
+            scene_times=[0.0, 10.0, 20.0],
+            video_duration=30.0,
+            camera_labels=["pan-right", "static", "zoom-in"],
+        )
+        self.assertEqual([s["camera"] for s in result["shots"]],
+                         ["pan-right", "static", "zoom-in"])
+
+    def test_camera_defaults_to_none(self):
+        result = compute_pacing(scene_times=[0.0, 10.0], video_duration=20.0)
+        self.assertTrue(all(s["camera"] is None for s in result["shots"]))
+
 
 class TestParseSignalstats(unittest.TestCase):
 

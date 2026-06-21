@@ -12,9 +12,10 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
-from pacing import parse_signalstats  # noqa: E402
+from pacing import parse_signalstats, parse_transforms  # noqa: E402
 
 
 MAX_FPS = 2.0
@@ -329,6 +330,57 @@ def extract_motion_diffs(
     diffs = parse_signalstats(result.stdout + "\n" + result.stderr)
     offset = start_seconds or 0.0
     return [(round(offset + t, 3), y) for t, y in diffs]
+
+
+def extract_camera_transforms(
+    video_path: str,
+    start_seconds: float | None = None,
+    end_seconds: float | None = None,
+    sample_fps: float = 8.0,
+    sample_width: int = 320,
+) -> tuple[list[tuple[float, list[tuple[int, int, int, int]]]], int, int]:
+    """Camera-motion vectors per frame via ffmpeg `vidstabdetect` — no opencv.
+
+    Runs vid.stab's detection pass into a temp `.trf`, parses it, and returns
+    `([(pts_time, [(v.x, v.y, f.x, f.y), ...]), ...], frame_w, frame_h)`. Field
+    positions are in the downsampled `sample_width`-wide frame, so the returned
+    dims match what classify_shot_movement needs. Timestamps are reconstructed
+    from the sample rate (offset back onto the real timeline when a range is set).
+    """
+    if shutil.which("ffmpeg") is None:
+        raise SystemExit("ffmpeg is not installed. Install with: brew install ffmpeg")
+
+    meta = get_metadata(video_path)
+    ow, oh = meta.get("width") or 0, meta.get("height") or 0
+    scaled_h = int(round(sample_width * oh / ow / 2.0) * 2) if ow else sample_width
+
+    work = Path(tempfile.mkdtemp(prefix="watch-vstab-"))
+    trf = work / "transforms.trf"
+    cmd: list[str] = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+    if start_seconds is not None:
+        cmd += ["-ss", f"{start_seconds:.3f}"]
+    if end_seconds is not None:
+        cmd += ["-to", f"{end_seconds:.3f}"]
+    vf = (
+        f"fps={sample_fps},scale={sample_width}:-2,"
+        f"vidstabdetect=result={trf}:shakiness=10:accuracy=15"
+    )
+    cmd += ["-i", str(Path(video_path).resolve()), "-an", "-vf", vf, "-f", "null", "-"]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0 or not trf.exists():
+            raise SystemExit(f"ffmpeg vidstabdetect failed: {result.stderr.strip()}")
+        frames = parse_transforms(trf.read_text(encoding="utf-8", errors="ignore"))
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+    offset = start_seconds or 0.0
+    per_frame = [
+        (round(offset + i / sample_fps, 3), motions)
+        for i, motions in enumerate(frames)
+    ]
+    return per_frame, sample_width, scaled_h
 
 
 def select_hero_frames(

@@ -17,7 +17,7 @@ You don't have a video input; this skill gives you one. A Python script download
 ## What v2 does differently
 
 - **Scene-change frame sampling** — one frame per detected shot instead of uniform ticks. Cuts the frame budget on long videos while capturing every transition.
-- **Editorial pacing metrics** — cuts/min, mean shot length, and per-shot **motion** measured via ffmpeg `signalstats` (YDIF luma-delta, no opencv). Lets you reason about pacing the way an editor does; the busiest shot also drives hero-frame selection.
+- **Editorial pacing metrics** — cuts/min, mean shot length, per-shot **motion** (ffmpeg `signalstats`, YDIF luma-delta) and per-shot **camera movement** (pan / tilt / zoom / static / handheld via ffmpeg `vidstabdetect`) — all opencv-free. Lets you reason about pacing the way an editor does; the busiest shot also drives hero-frame selection.
 - **Hook microscope** — first 10s auto-runs at 2 fps + word-level Whisper. The single most leveraged 10 seconds of any video deserves dense treatment.
 - **Structured `report.md`** — every watch emits an ingest-shaped report at `<workdir>/report.md` with TL;DR, key moments, hook breakdown, editorial profile, quotable moments, entities, concepts, and transcript. Narrative sections are emitted as `<!-- pending Claude fill: ... -->` markers — you fill them in before offering ingest.
 - **Step 4.5 — Ingest gate** — after answering the user, you ask once: "Want to ingest this into your Obsidian vault?" If yes, and a vault is detected, you read `$VAULT_DIR/CLAUDE.md` (if it exists) and run that vault's Ingest op against the report.

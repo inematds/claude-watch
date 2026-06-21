@@ -138,7 +138,7 @@
   <div class="grid g3">
     <div class="card"><h3>🎞️ Frames por corte de cena</h3><p>Um frame por shot detectado via <code>ffmpeg select=gt(scene,…)</code>, não um tick fixo a cada N segundos. O custo de token fica plano em vídeo longo, porque o número de frames é limitado pelos cortes, não pela duração.</p></div>
     <div class="card"><h3>🔬 Microscópio do hook 0-10s</h3><p>Passada densa a 2 fps + transcript Whisper word-level nos primeiros 10 segundos — onde todo vídeo ganha ou perde a atenção. O relatório diz o que estava na tela conforme cada palavra caía.</p></div>
-    <div class="card"><h3>📝 report.md + Obsidian</h3><p>Relatório de esquema fixo (TL;DR, momentos-chave, hook, perfil editorial com motion por shot, citações, entidades, conceitos, transcript) com marcadores que o Claude preenche. Auto-save opcional no seu vault Obsidian.</p></div>
+    <div class="card"><h3>📝 report.md + Obsidian</h3><p>Relatório de esquema fixo (TL;DR, momentos-chave, hook, perfil editorial com motion e movimento de câmera, citações, entidades, conceitos, transcript) com marcadores que o Claude preenche. Auto-save opcional no seu vault Obsidian.</p></div>
   </div>
 </div></section>
 
@@ -150,7 +150,7 @@
     <span>URL ou arquivo</span><span class="arr">→</span>
     <span>yt-dlp baixa</span><span class="arr">→</span>
     <span>ffmpeg: frames por cena</span><span class="arr">→</span>
-    <span>pacing + motion (signalstats)</span><span class="arr">→</span>
+    <span>pacing + motion + câmera</span><span class="arr">→</span>
     <span>captions / Whisper</span><span class="arr">→</span>
     <span>Claude lê cada frame</span><span class="arr">→</span>
     <span>resposta + report.md</span><span class="arr">→</span>
@@ -237,7 +237,7 @@ OPENAI_API_KEY=<span class="s">…</span> <span class="c"># platform.openai.com<
   <span class="chip">Roadmap</span>
   <h2>Versões e origem</h2>
   <p class="sub">Fork de <a href="https://github.com/bradautomates/claude-video" target="_blank" rel="noopener">claude-video</a> de Bradley Bonanno (MIT) — o pipeline yt-dlp + ffmpeg + Whisper é dele e roda sem mudança.</p>
-  <div class="phase"><div class="tag">v0.3.1</div><div class="d"><strong>Atual</strong><span>Motion por shot via ffmpeg <code>signalstats</code> (sem opencv), alimentando as hero frames e o perfil editorial. Antes: frames por corte de cena, microscópio do hook 0-10s, report.md estruturado e auto-save no Obsidian.</span></div></div>
+  <div class="phase"><div class="tag">v0.4.1</div><div class="d"><strong>Atual</strong><span>Classificação de <strong>movimento de câmera</strong> por shot (pan / tilt / zoom / estático / handheld) via ffmpeg <code>vidstabdetect</code>, sem opencv. Antes: motion por shot (signalstats), frames por corte de cena, microscópio do hook 0-10s, report.md e auto-save no Obsidian.</span></div></div>
   <div class="phase"><div class="tag">Base</div><div class="d"><strong>claude-video (Bradley Bonanno)</strong><span>Download yt-dlp + captions, frames ffmpeg com fps auto-escalado, backends Groq/OpenAI Whisper, modo focado <code>--start/--end</code> e o hook de SessionStart.</span></div></div>
   <div class="phase"><div class="tag">Próximo</div><div class="d"><strong>Mais métricas e plataformas</strong><span>Razão talking-head (detecção opcional de rosto), cobertura de mais fontes e refinos da operação de ingest no Second Brain.</span></div></div>
 </div></section>

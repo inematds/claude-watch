@@ -23,7 +23,7 @@ Zero config pra começar — `yt-dlp` e `ffmpeg` se instalam no primeiro run via
 
 - **Extração de frames por corte de cena** — `scripts/frames.py` pega um frame por shot detectado via `select=gt(scene,...)` do ffmpeg, não um tick uniforme a cada N segundos. O custo de token fica plano em vídeo longo porque o número de frames é limitado pela quantidade de cortes, não pela duração.
 - **Microscópio do hook 0-10s** — `scripts/hook.py` roda uma passada mais densa a 2 fps nos primeiros 10 segundos + um transcript Whisper word-level, pro relatório dizer o que estava na tela *conforme cada palavra caía*. Os 10 primeiros segundos são onde todo vídeo ganha ou perde sua atenção.
-- **Métricas editoriais de pacing + motion** — `scripts/pacing.py` calcula cortes/min, duração média/mediana de shot e, agora, **motion por shot via ffmpeg `signalstats`** (delta de luma YDIF, sem opencv). O shot mais agitado também guia a escolha das hero frames. Dá pra raciocinar sobre ritmo como um editor faz.
+- **Métricas editoriais de pacing, motion e câmera** — `scripts/pacing.py` calcula cortes/min, duração média/mediana de shot, **motion por shot via ffmpeg `signalstats`** (delta de luma YDIF) e **movimento de câmera por shot** (pan / tilt / zoom / estático / handheld via ffmpeg `vidstabdetect`) — tudo sem opencv. O shot mais agitado também guia a escolha das hero frames. Dá pra raciocinar sobre ritmo como um editor faz.
 - **`report.md` estruturado com marcadores de preenchimento** — `scripts/report.py` emite um relatório de esquema fixo (TL;DR, momentos-chave, breakdown do hook, perfil editorial, citações, entidades, conceitos, transcript) onde as seções narrativas são marcadores explícitos `<!-- pending Claude fill: ... -->`. O Claude tem uma lista de tarefas pra percorrer antes do ingest, não um doc em branco.
 - **Auto-save opcional no Obsidian** — o Step 4.4 monta o relatório em `$VAULT_DIR/raw/watched/<slug>/` e abre via URL scheme `obsidian://`. O Step 4.5 oferece o ingest no wiki do vault. Os dois passos pulam limpo quando nenhum vault é detectado. O caminho do vault vem de `$WATCH_VAULT_DIR` ou é auto-detectado em `~/Second brain/`, `~/Documents/Obsidian/`, `~/Obsidian/`.
 
@@ -69,7 +69,7 @@ O Claude é ótimo em ler e sintetizar — mas até agora vídeo era o único in
 
 O `/watch` não para na resposta. O objetivo de verdade é transformar o vídeo numa **nota estruturada e conectada no seu "Second Brain" do Obsidian** — enquadrada pelo *porquê* você assistiu (o `--intent`). Ele grava em duas camadas:
 
-**1. O artefato bruto — `report.md`** (Step 4.4), montado em `raw/watched/<slug>/` junto com as **hero frames** escolhidas. Esquema fixo: frontmatter (source, title, duration, watched_at, intent, hero_frames, transcript_source), **TL;DR** pela lente do seu intent, **momentos-chave**, o **microscópio do hook 0-10s** (frame-a-frame + transcript word-level + o padrão de gancho), **perfil editorial** (cortes/min, duração de shot, motion por shot, fingerprint de estilo), **citações**, **entidades** (pessoas / empresas / ferramentas como `[[wikilinks]]`), **conceitos** e o **transcript** completo.
+**1. O artefato bruto — `report.md`** (Step 4.4), montado em `raw/watched/<slug>/` junto com as **hero frames** escolhidas. Esquema fixo: frontmatter (source, title, duration, watched_at, intent, hero_frames, transcript_source), **TL;DR** pela lente do seu intent, **momentos-chave**, o **microscópio do hook 0-10s** (frame-a-frame + transcript word-level + o padrão de gancho), **perfil editorial** (cortes/min, duração de shot, motion por shot, movimento de câmera, fingerprint de estilo), **citações**, **entidades** (pessoas / empresas / ferramentas como `[[wikilinks]]`), **conceitos** e o **transcript** completo.
 
 **2. Ingestão no wiki** (Step 4.5, só com o seu consentimento). Se o vault tem um `CLAUDE.md` com uma Ingest op, ela roda contra o relatório e grava/atualiza:
 - `wiki/entities/` — páginas das pessoas, empresas e ferramentas mencionadas
@@ -196,8 +196,8 @@ Outros botões (passados pro `scripts/watch.py`):
 ├── scripts/
 │   ├── watch.py             # entry point — orquestra download → frames → transcript
 │   ├── download.py          # wrapper do yt-dlp
-│   ├── frames.py            # extração de frames ffmpeg + auto-fps + motion (signalstats)
-│   ├── pacing.py            # métricas editoriais (cortes/min, shot length, motion por shot)
+│   ├── frames.py            # frames ffmpeg + auto-fps + motion (signalstats) + câmera (vidstabdetect)
+│   ├── pacing.py            # métricas editoriais (cortes/min, shot length, motion, movimento de câmera)
 │   ├── hook.py              # microscópio do hook 0-10s
 │   ├── report.py            # emissor do report.md estruturado
 │   ├── transcribe.py        # parse de VTT + dedupe + orquestração Whisper

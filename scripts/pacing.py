@@ -38,6 +38,7 @@ def compute_pacing(
     scene_times: list[float],
     video_duration: float,
     motion_scores: list[float] | None = None,
+    camera_labels: list[str] | None = None,
 ) -> dict:
     """Build shot-by-shot pacing report.
 
@@ -76,9 +77,12 @@ def compute_pacing(
             "start_seconds": round(start, 2),
             "duration_seconds": round(duration, 2),
             "motion_score": None,
+            "camera": None,
         }
         if motion_scores is not None and i < len(motion_scores):
             shot["motion_score"] = round(float(motion_scores[i]), 3)
+        if camera_labels is not None and i < len(camera_labels):
+            shot["camera"] = camera_labels[i]
         shots.append(shot)
 
     durations = [s["duration_seconds"] for s in shots]
@@ -217,10 +221,11 @@ def classify_shot_movement(
         radials.append((vx * rx + vy * ry) / r)
     zoom_raw = statistics.median(radials) if radials else 0.0
 
-    pan = vx_med / frame_w
-    tilt = vy_med / frame_h
     zoom = zoom_raw / (diag / 2.0)
     mag_norm = mag_med / diag
+    # Dominance is compared in raw pixels (not aspect-normalised) so a short
+    # frame doesn't make vertical jitter outweigh a real horizontal pan.
+    trans_strength = max(abs(vx_med), abs(vy_med))
 
     result = {
         "vx": round(vx_med, 2), "vy": round(vy_med, 2),
@@ -230,15 +235,39 @@ def classify_shot_movement(
 
     if mag_norm < _STATIC_MAG:
         result["label"] = "static"
-    elif abs(zoom) > _ZOOM_MIN and abs(zoom) >= max(abs(pan), abs(tilt)):
+    elif abs(zoom_raw) > trans_strength and abs(zoom) > _ZOOM_MIN:
         result["label"] = "zoom-in" if zoom > 0 else "zoom-out"
     elif coherence < _SHAKE_COHERENCE:
         result["label"] = "handheld"
-    elif abs(pan) >= abs(tilt):
+    elif abs(vx_med) >= abs(vy_med):
         result["label"] = "pan-right" if vx_med > 0 else "pan-left"
     else:
         result["label"] = "tilt-down" if vy_med > 0 else "tilt-up"
     return result
+
+
+def camera_moves_per_shot(
+    per_frame: list[tuple[float, list[tuple[int, int, int, int]]]],
+    scene_times: list[float],
+    video_duration: float,
+    frame_w: int,
+    frame_h: int,
+) -> list[str]:
+    """One camera-movement label per shot, pooling all vidstab vectors whose
+    frame timestamp falls inside that shot. Shot boundaries come from
+    _shot_intervals, so the result lines up 1:1 with compute_pacing's shots. A
+    shot with no frames classifies as "unknown"."""
+    if not scene_times or video_duration <= 0:
+        return []
+    intervals = _shot_intervals(scene_times, video_duration)
+    pooled: list[list[tuple[int, int, int, int]]] = [[] for _ in intervals]
+    for t, motions in per_frame:
+        for i, (start, end) in enumerate(intervals):
+            last = i == len(intervals) - 1
+            if start <= t < end or (last and t == end):
+                pooled[i].extend(motions)
+                break
+    return [classify_shot_movement(p, frame_w, frame_h)["label"] for p in pooled]
 
 
 if __name__ == "__main__":

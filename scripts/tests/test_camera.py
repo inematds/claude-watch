@@ -1,12 +1,26 @@
 """Unit tests for camera-movement classification from vidstabdetect .trf."""
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from pacing import parse_transforms, classify_shot_movement  # noqa: E402
+from pacing import (  # noqa: E402
+    parse_transforms, classify_shot_movement, camera_moves_per_shot,
+)
+from frames import extract_camera_transforms  # noqa: E402
+
+
+def _has_vidstab() -> bool:
+    if shutil.which("ffmpeg") is None:
+        return False
+    out = subprocess.run(["ffmpeg", "-hide_banner", "-filters"],
+                         capture_output=True, text=True)
+    return "vidstabdetect" in out.stdout
 
 W, H = 320, 240
 # symmetric field positions about the centre (160,120) so a pure pan/tilt
@@ -77,6 +91,65 @@ class TestClassifyShotMovement(unittest.TestCase):
 
     def test_empty_is_unknown(self):
         self.assertEqual(classify_shot_movement([], W, H)["label"], "unknown")
+
+
+class TestCameraMovesPerShot(unittest.TestCase):
+
+    def test_classifies_each_shot_independently(self):
+        per_frame = [
+            (1.0, _vecs(8, 0)), (5.0, _vecs(8, 0)),          # shot 0: pan-right
+            (11.0, [(0, 0, 100, 100), (1, 0, 160, 120)]),    # shot 1: static
+            (15.0, [(0, 0, 60, 160)]),
+        ]
+        labels = camera_moves_per_shot(per_frame, scene_times=[0.0, 10.0],
+                                       video_duration=20.0, frame_w=W, frame_h=H)
+        self.assertEqual(labels, ["pan-right", "static"])
+
+    def test_shot_without_frames_is_unknown(self):
+        per_frame = [(1.0, _vecs(8, 0))]  # only falls in shot 0
+        labels = camera_moves_per_shot(per_frame, scene_times=[0.0, 10.0],
+                                       video_duration=20.0, frame_w=W, frame_h=H)
+        self.assertEqual(labels[0], "pan-right")
+        self.assertEqual(labels[1], "unknown")
+
+    def test_empty_scene_times_returns_empty(self):
+        self.assertEqual(
+            camera_moves_per_shot([(1.0, _vecs(8, 0))], scene_times=[],
+                                  video_duration=20.0, frame_w=W, frame_h=H),
+            [],
+        )
+
+
+class TestCameraRunner(unittest.TestCase):
+
+    def setUp(self):
+        if not _has_vidstab():
+            self.skipTest("ffmpeg vidstabdetect not available")
+        self.tmp = Path(tempfile.mkdtemp(prefix="watch-cam-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_detects_horizontal_pan_end_to_end(self):
+        # Freeze one textured frame, then slide a window across it = a clean
+        # horizontal pan with no in-scene animation to muddy the vectors.
+        still = self.tmp / "still.png"
+        subprocess.run([
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            "-f", "lavfi", "-i", "testsrc2=s=1280x480", "-frames:v", "1", str(still),
+        ], check=True, capture_output=True)
+        pan = self.tmp / "pan.mp4"
+        subprocess.run([
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            "-loop", "1", "-i", str(still), "-t", "2", "-r", "30",
+            "-vf", "crop=640:480:x='(in_w-640)*t/2':y=0", "-pix_fmt", "yuv420p", str(pan),
+        ], check=True, capture_output=True)
+
+        per_frame, w, h = extract_camera_transforms(str(pan))
+        self.assertTrue(per_frame, "expected per-frame motion data")
+        pooled = [v for _, motions in per_frame for v in motions]
+        label = classify_shot_movement(pooled, w, h)["label"]
+        self.assertTrue(label.startswith("pan"), f"expected a pan, got {label!r}")
 
 
 if __name__ == "__main__":
