@@ -81,6 +81,33 @@ Sem um `CLAUDE.md` no vault, ele cai num ingest genérico: a linha no `log.md` m
 
 **O objetivo unificador:** o vídeo vira um nó de primeira classe no seu grafo de conhecimento — as pessoas, ferramentas e conceitos dele ligados via `[[wikilink]]` às notas que você já tem, enquadrados pelo seu motivo de assistir. Detalhe: o script *gera* o `report.md` sozinho, mas o wiki só é populado se o seu vault definir a Ingest op — a skill delega esse passo ao contrato do seu Second Brain, em vez de trazer um pronto.
 
+## Ler o estilo cinematográfico (perfil editorial)
+
+Um vídeo curto — de até ~2-3 minutos — é o ponto ideal pra "ler o estilo": o orçamento dá ~60-80 frames (um por corte), o transcript inteiro e o perfil editorial completo. O que sai é um **brief de estilo**, parte **medido**, parte **inferido**:
+
+**Medido (números reais, sem opencv):**
+- **Ritmo** — cortes/min + duração média/mediana de shot. É o fingerprint de pacing: "cortes secos, shot médio 1,8s" (estilo MTV/Fireship) vs "shots de 8s" (contemplativo).
+- **Motion** — `signalstats` por shot: quais planos são agitados vs parados.
+- **Câmera** — rótulo por shot (pan / tilt / zoom / estático / handheld) + o movimento dominante, via `vidstabdetect`.
+
+**Inferido pelo Claude (lendo os frames):**
+- Paleta / look de cor, enquadramento e composição (close vs wide, simetria), iluminação (high/low-key), uso de texto na tela, transições e lente aparente (grande-angular vs tele).
+- Um **fingerprint de estilo de uma linha** (já é uma seção do `report.md`).
+
+> **Densidade:** o motion e o classificador de câmera amostram o vídeo **inteiro** (4-8 fps), não só os frames que o Claude vê. Movimento *dentro* de um shot é capturado mesmo o Claude vendo um frame por plano.
+
+**Limites honestos:**
+- Grading/LUT, lente, profundidade de campo e temperatura de cor são **inferidos dos frames, não medidos**.
+- O *sentido* do movimento (esquerda/direita) é heurístico — confiável só pro **eixo** (pan vs tilt vs zoom vs handheld vs estático).
+- Áudio: só a fala (transcript). Não analisa trilha/música/mixagem.
+
+Como rodar — o `--intent` molda o report pra esse eixo:
+```
+/watch seu-video.mp4 estilo cinematográfico e linguagem de câmera
+```
+
+O brief resultante (pacing + câmera + look + fingerprint) serve de direção pronta pra ferramentas de geração/motion de vídeo.
+
 ## Orçamento de frames — por que importa
 
 O custo de token é dominado pelos frames. Cada frame é uma imagem; tokens de imagem somam rápido. A lógica de auto-fps existe pra você não estourar o orçamento de contexto num scan esparso de um vídeo de 30 minutos que teria sido melhor respondido por uma janela focada de 30 segundos.
